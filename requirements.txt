@@ -1,0 +1,4 @@
+matplotlib
+beautifulsoup4
+networkx
+plotly
