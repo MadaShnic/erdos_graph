@@ -1,6 +1,6 @@
-matplotlib
 beautifulsoup4
 networkx
 plotly
 anywidget
 dash
+lxml
