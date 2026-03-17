@@ -212,11 +212,13 @@ def parse_fer_people(conn, gender_db):
 
         potential_slugs = []
 
+        # Prvo “normalni” slugovi
         for s in [slug1, slug2]:
             if s:
                 potential_slugs.append(s)
                 potential_slugs.append(s.replace("_", "-"))
 
+        # Ukloni duplikate
         potential_slugs = list(dict.fromkeys(potential_slugs))
 
         department = None
@@ -224,25 +226,24 @@ def parse_fer_people(conn, gender_db):
 
         print(f"Processing: {full_name}")
 
-        for slug in potential_slugs:
+        # Funkcija koja provjeri listu slugova s opcionalnim prefixom
+        def try_slugs(slugs, prefix=""):
+            for slug in slugs:
+                profile_url = urljoin(BASE_FER, f"{prefix}{slug}")
+                try:
+                    r = requests.get(profile_url, timeout=10)
+                    if r.status_code == 200:
+                        return profile_url, parse_fer_profile(r.text)
+                except Exception as e:
+                    print(f" Error connecting to {profile_url}: {e}")
+            return None, None
 
-            profile_url = urljoin(BASE_FER, slug)
+        # Prvo pokušaj bez /en/
+        profile_url_final, department = try_slugs(potential_slugs)
 
-            try:
-
-                r = requests.get(profile_url, timeout=10)
-
-                if r.status_code == 200:
-
-                    print(f" Found valid URL: {profile_url}")
-                    
-                    profile_url_final = profile_url
-                    department = parse_fer_profile(r.text)
-                    break
-
-            except Exception as e:
-
-                print(f" Error connecting to {profile_url}: {e}")
+        # Ako ništa nije pronađeno, probaj sa /en/
+        if not profile_url_final:
+            profile_url_final, department = try_slugs(potential_slugs, prefix="en/")
 
         if not department:
             print("No department found for:", full_name)
@@ -257,7 +258,6 @@ def parse_fer_people(conn, gender_db):
         ))
 
         conn.commit()
-
         time.sleep(1.5)
 
 # function for fixing unknown genders in database
