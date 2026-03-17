@@ -3,6 +3,7 @@ import requests
 import sqlite3
 import time
 import unicodedata
+import os
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -11,6 +12,9 @@ FIRSTNAMES_CSV = "db\\firstnames.csv"
 
 BASE_ISVU = "https://www.isvu.hr"
 BASE_FER = "https://www.fer.unizg.hr/"
+
+if os.path.exists(DB_PATH):
+    os.remove(DB_PATH)
 
 # ------------------------
 # Normalization
@@ -85,6 +89,23 @@ def init_db():
         role TEXT,
         fer_profile_url TEXT,
         UNIQUE(full_name)
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS paper (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL UNIQUE
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS authorship (
+        person_id INTEGER NOT NULL,
+        paper_id INTEGER NOT NULL,
+        PRIMARY KEY (person_id, paper_id),
+        FOREIGN KEY (person_id) REFERENCES person(id),
+        FOREIGN KEY (paper_id) REFERENCES paper(id)
     );
     """)
 
@@ -209,15 +230,14 @@ def parse_fer_people(conn, gender_db):
 
             try:
 
-                r = requests.get(profile_url, timeout=5)
+                r = requests.get(profile_url, timeout=10)
 
                 if r.status_code == 200:
 
                     print(f" Found valid URL: {profile_url}")
-
-                    department = parse_fer_profile(r.text)
+                    
                     profile_url_final = profile_url
-
+                    department = parse_fer_profile(r.text)
                     break
 
             except Exception as e:
@@ -240,6 +260,38 @@ def parse_fer_people(conn, gender_db):
 
         time.sleep(1.5)
 
+# function for fixing unknown genders in database
+
+def fix_unknown_genders(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, full_name FROM person
+        WHERE gender = 'unknown'
+    """)
+
+    rows = cur.fetchall()
+
+    print("\n--- Manual gender input ---")
+    print("Enter M / F (or press Enter to skip)\n")
+
+    for person_id, full_name in rows:
+        while True:
+            user_input = input(f"{full_name} (M/F/skip): ").strip().upper()
+
+            if user_input == "":
+                break
+            elif user_input in ("M", "F"):
+                cur.execute("""
+                    UPDATE person
+                    SET gender = ?
+                    WHERE id = ?
+                """, (user_input, person_id))
+                conn.commit()
+                break
+            else:
+                print("Invalid input. Use M, F or Enter to skip.")
+
 # ------------------------
 # MAIN
 # ------------------------
@@ -251,10 +303,13 @@ def main():
     conn = init_db()
 
     parse_fer_people(conn, gender_db)
+    print("Finished FER people import")
+
+    fix_unknown_genders(conn)
 
     conn.close()
 
-    print("Finished FER-only import.")
+    print("Program end")
 
 if __name__ == "__main__":
     main()

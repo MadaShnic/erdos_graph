@@ -9,7 +9,7 @@ DB_PATH = "./db/erdos.db"
 def normalize_name(name: str) -> str:
     name = name.replace("-", " ")
     nfkd = unicodedata.normalize("NFKD", name)
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
 
 def get_person_id(conn, full_name):
     cur = conn.cursor()
@@ -54,6 +54,7 @@ def build_coauthor_graph_from_db(root_author, max_depth):
 
     while queue:
         person_id, person_name, depth = queue.popleft()
+        graph[person_name]  # ensures node exists even without edges
 
         if depth >= max_depth:
             continue
@@ -62,6 +63,7 @@ def build_coauthor_graph_from_db(root_author, max_depth):
 
         for co_id, co_name in coauthors:
             graph[person_name].add(co_name)
+            graph[co_name].add(person_name)
 
             if co_id not in visited:
                 visited.add(co_id)
