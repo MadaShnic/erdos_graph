@@ -3,8 +3,11 @@ import requests
 import time
 import random
 import unicodedata
+import json
+import os
 
 DB_PATH = "db\\erdos.db"
+CACHE_FILE = "dblp_cache.json"
 
 
 # ------------------ utils ------------------
@@ -12,17 +15,56 @@ DB_PATH = "db\\erdos.db"
 def normalize_name(name: str) -> str:
     if not name:
         return ""
+
     name = name.replace("-", " ")
     nfkd = unicodedata.normalize("NFKD", name)
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
 
-def dblp_api_search(
-    name: str,
-    max_hits=1000,
-    initial_delay=2,
-    max_delay=64,
-    max_retries=10
-):
+    cleaned = "".join(
+        c for c in nfkd if not unicodedata.combining(c)
+    ).lower().strip()
+
+    return " ".join(cleaned.split())
+
+
+def name_matches(a: str, b: str) -> bool:
+    """
+    Pametniji matching:
+    - ignorira redoslijed
+    - ignorira crtice
+    """
+
+    a_parts = set(normalize_name(a).split())
+    b_parts = set(normalize_name(b).split())
+
+    # mora imati barem 2 zajednička dijela (ime + prezime)
+    return len(a_parts & b_parts) >= 2
+
+
+# ------------------ CACHE ------------------
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_cache(cache):
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f)
+
+
+# ------------------ DBLP API ------------------
+
+def dblp_api_search(name, cache,
+                    max_hits=1000,
+                    initial_delay=2,
+                    max_delay=64,
+                    max_retries=10):
+
+    if name in cache:
+        return cache[name]
+
     url = "https://dblp.org/search/publ/api"
     params = {
         "q": name,
@@ -35,7 +77,6 @@ def dblp_api_search(
 
     while True:
         try:
-            # mali jitter da ne pucaš točno u istim intervalima
             time.sleep(delay + random.uniform(0.0, 0.5))
 
             r = requests.get(
@@ -45,41 +86,32 @@ def dblp_api_search(
                 timeout=30
             )
 
-            # ---------------- SUCCESS ----------------
             if r.status_code == 200:
-                return r.json()
+                data = r.json()
+                cache[name] = data
+                return data
 
-            # ---------------- RATE LIMIT ----------------
             if r.status_code == 429:
                 retries += 1
                 if retries > max_retries:
-                    raise RuntimeError(
-                        f"Too many retries (429) for '{name}'"
-                    )
+                    raise RuntimeError(f"Too many retries for '{name}'")
 
-                print(
-                    f"  [429] Rate limited for '{name}', "
-                    f"retry in {delay}s (attempt {retries})"
-                )
-
+                print(f"[429] {name}, retry in {delay}s")
                 delay = min(delay * 2, max_delay)
                 continue
 
-            # ---------------- OTHER ERRORS ----------------
             r.raise_for_status()
 
         except requests.RequestException as e:
             retries += 1
             if retries > max_retries:
-                raise RuntimeError(
-                    f"Request failed too many times for '{name}': {e}"
-                )
+                raise RuntimeError(f"Fail for '{name}': {e}")
 
-            print(
-                f"  [ERROR] {e}, retry in {delay}s "
-                f"(attempt {retries})"
-            )
+            print(f"[ERROR] {e}, retry in {delay}s")
             delay = min(delay * 2, max_delay)
+
+
+# ------------------ PARSE ------------------
 
 def parse_publications(data):
     hits = data.get("result", {}).get("hits", {}).get("hit", [])
@@ -113,11 +145,6 @@ def parse_publications(data):
 # ------------------ DB helpers ------------------
 
 def load_people(conn):
-    """
-    Returns:
-    - id_by_norm_name : dict normalized_name -> person_id
-    - name_by_id     : dict person_id -> full_name
-    """
     cur = conn.cursor()
     cur.execute("SELECT id, full_name FROM person")
 
@@ -130,6 +157,16 @@ def load_people(conn):
         name_by_id[pid] = name
 
     return id_by_norm, name_by_id
+
+
+def find_person_id_fuzzy(name, id_by_norm):
+    """
+    Pokušaj pronaći osobu fuzzy matchom
+    """
+    for norm_name, pid in id_by_norm.items():
+        if name_matches(name, norm_name):
+            return pid
+    return None
 
 
 def get_or_create_paper(cur, title):
@@ -156,15 +193,17 @@ def populate_from_dblp():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
+    cache = load_cache()
+
     id_by_norm, name_by_id = load_people(conn)
 
-    print(f"[INFO] Loaded {len(id_by_norm)} people from database")
+    print(f"[INFO] Loaded {len(id_by_norm)} people")
 
     for root_id, root_name in name_by_id.items():
-        print(f"\n[DBLP] Processing: {root_name}")
+        print(f"\n[DBLP] {root_name}")
 
         try:
-            data = dblp_api_search(root_name)
+            data = dblp_api_search(root_name, cache)
         except Exception as e:
             print(f"  ! API error: {e}")
             continue
@@ -175,18 +214,21 @@ def populate_from_dblp():
             title = pub["title"]
             authors = pub["authors"]
 
-            # keep only authors that exist in OUR database
             author_ids = []
+
             for a in authors:
                 norm = normalize_name(a)
+
                 if norm in id_by_norm:
                     author_ids.append(id_by_norm[norm])
+                else:
+                    pid = find_person_id_fuzzy(a, id_by_norm)
+                    if pid:
+                        author_ids.append(pid)
 
-            # skip papers where root author is not actually included
             if root_id not in author_ids:
                 continue
 
-            # skip solo papers with external authors only
             if len(author_ids) < 1:
                 continue
 
@@ -200,6 +242,8 @@ def populate_from_dblp():
                     )
 
         conn.commit()
+
+    save_cache(cache)
 
     conn.close()
     print("\n[DONE] DBLP import finished.")

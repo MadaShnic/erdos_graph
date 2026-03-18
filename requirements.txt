@@ -4,3 +4,4 @@ plotly
 anywidget
 dash
 lxml
+numpy
