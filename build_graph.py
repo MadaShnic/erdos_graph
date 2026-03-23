@@ -133,15 +133,7 @@ def compute_person_stats(conn, person_id):
     }
 
 def main():
-    root_author = "Anamari Nakić"   # ili "Anamari Nakić"
-    max_depth = 3
-
-    graph, levels = build_coauthor_graph_from_db(
-        root_author=root_author,
-        max_depth=max_depth
-    )
-
-    visual.run_dash_app(graph, levels, root_author)
+    visual.run_dash_app()
 
 
 if __name__ == "__main__":
