@@ -54,13 +54,32 @@ def build_coauthor_graph_from_db(root_author, max_depth):
 
     while queue:
         person_id, person_name, depth = queue.popleft()
-        graph[person_name]  # ensures node exists even without edges
 
-        if depth >= max_depth:
-            continue
+        # osiguraj da čvor postoji (čak i bez bridova)
+        graph[person_name]
 
         coauthors = get_coauthors(conn, person_id)
 
+        # RUBNI ČVOR (depth == max_depth)
+        if depth == max_depth:
+            for co_id, co_name in coauthors:
+
+                if co_name in graph:
+                    # već postoji u grafu
+                    graph[person_name].add(co_name)
+                    graph[co_name].add(person_name)
+                else:
+                    # EXTERNAL NODE
+                    ext_node = f"EXT::{person_name}::{co_name}"
+                    graph[person_name].add(ext_node)
+                    graph[ext_node].add(person_name)
+
+                    # da ima level (npr. depth+1 ili posebno)
+                    levels[ext_node] = depth + 1
+
+            continue
+
+        # BFS ŠIRENJE
         for co_id, co_name in coauthors:
             graph[person_name].add(co_name)
             graph[co_name].add(person_name)
@@ -73,9 +92,48 @@ def build_coauthor_graph_from_db(root_author, max_depth):
     conn.close()
     return graph, levels
 
+def compute_person_stats(conn, person_id):
+    cur = conn.cursor()
+
+    # total papers
+    cur.execute("""
+        SELECT COUNT(*) FROM authorship
+        WHERE person_id = ?
+    """, (person_id,))
+    total = cur.fetchone()[0]
+
+    # uzmi sve papere osobe + external info
+    cur.execute("""
+        SELECT p.id, p.external_author_count,
+               COUNT(a.person_id) as fer_count
+        FROM paper p
+        JOIN authorship a ON p.id = a.paper_id
+        WHERE p.id IN (
+            SELECT paper_id FROM authorship WHERE person_id = ?
+        )
+        GROUP BY p.id
+    """, (person_id,))
+
+    solo = 0
+    collab = 0
+
+    for _, external_cnt, fer_cnt in cur.fetchall():
+        # SOLO samo ako:
+        # - samo 1 FER autor
+        # - nema external autora
+        if fer_cnt == 1 and external_cnt == 0:
+            solo += 1
+        else:
+            collab += 1
+
+    return {
+        "total": total,
+        "solo": solo,
+        "collab": collab
+    }
 
 def main():
-    root_author = "Mario Osvin Pavčević"   # ili "Anamari Nakić"
+    root_author = "Anamari Nakić"   # ili "Anamari Nakić"
     max_depth = 3
 
     graph, levels = build_coauthor_graph_from_db(

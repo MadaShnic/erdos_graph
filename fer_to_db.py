@@ -3,7 +3,6 @@ import requests
 import sqlite3
 import time
 import unicodedata
-import os
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -12,9 +11,6 @@ FIRSTNAMES_CSV = "db\\firstnames.csv"
 
 BASE_ISVU = "https://www.isvu.hr"
 BASE_FER = "https://www.fer.unizg.hr/"
-
-if os.path.exists(DB_PATH):
-    os.remove(DB_PATH)
 
 # ------------------------
 # Normalization
@@ -72,7 +68,7 @@ def find_gender(first_name, db):
     return db.get(first_name.lower(), "unknown")
 
 # ------------------------
-# DB
+# DB (ONLY PERSON TABLE)
 # ------------------------
 
 def init_db():
@@ -92,23 +88,6 @@ def init_db():
     );
     """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS paper (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL UNIQUE
-    );
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS authorship (
-        person_id INTEGER NOT NULL,
-        paper_id INTEGER NOT NULL,
-        PRIMARY KEY (person_id, paper_id),
-        FOREIGN KEY (person_id) REFERENCES person(id),
-        FOREIGN KEY (paper_id) REFERENCES paper(id)
-    );
-    """)
-
     conn.commit()
     return conn
 
@@ -120,7 +99,7 @@ def insert_person(cur, data):
     """, data)
 
 # ------------------------
-# Name parsing (ROBUST)
+# Name parsing
 # ------------------------
 
 def parse_name_and_title(raw_name):
@@ -165,7 +144,6 @@ def parse_name_and_title(raw_name):
 def parse_fer_profile(html):
 
     soup = BeautifulSoup(html, "html.parser")
-
     text = soup.get_text("\n")
 
     for line in text.split("\n"):
@@ -212,13 +190,11 @@ def parse_fer_people(conn, gender_db):
 
         potential_slugs = []
 
-        # Prvo “normalni” slugovi
         for s in [slug1, slug2]:
             if s:
                 potential_slugs.append(s)
                 potential_slugs.append(s.replace("_", "-"))
 
-        # Ukloni duplikate
         potential_slugs = list(dict.fromkeys(potential_slugs))
 
         department = None
@@ -226,7 +202,6 @@ def parse_fer_people(conn, gender_db):
 
         print(f"Processing: {full_name}")
 
-        # Funkcija koja provjeri listu slugova s opcionalnim prefixom
         def try_slugs(slugs, prefix=""):
             for slug in slugs:
                 profile_url = urljoin(BASE_FER, f"{prefix}{slug}")
@@ -238,10 +213,8 @@ def parse_fer_people(conn, gender_db):
                     print(f" Error connecting to {profile_url}: {e}")
             return None, None
 
-        # Prvo pokušaj bez /en/
         profile_url_final, department = try_slugs(potential_slugs)
 
-        # Ako ništa nije pronađeno, probaj sa /en/
         if not profile_url_final:
             profile_url_final, department = try_slugs(potential_slugs, prefix="en/")
 
@@ -260,7 +233,9 @@ def parse_fer_people(conn, gender_db):
         conn.commit()
         time.sleep(1.5)
 
-# function for fixing unknown genders in database
+# ------------------------
+# Fix genders
+# ------------------------
 
 def fix_unknown_genders(conn):
     cur = conn.cursor()

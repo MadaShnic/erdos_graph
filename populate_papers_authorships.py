@@ -27,16 +27,8 @@ def normalize_name(name: str) -> str:
 
 
 def name_matches(a: str, b: str) -> bool:
-    """
-    Pametniji matching:
-    - ignorira redoslijed
-    - ignorira crtice
-    """
-
     a_parts = set(normalize_name(a).split())
     b_parts = set(normalize_name(b).split())
-
-    # mora imati barem 2 zajednička dijela (ime + prezime)
     return len(a_parts & b_parts) >= 2
 
 
@@ -52,6 +44,33 @@ def load_cache():
 def save_cache(cache):
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(cache, f)
+
+
+# ------------------ DB INIT ------------------
+
+def init_paper_tables(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS paper (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL UNIQUE,
+        fer_author_count INTEGER DEFAULT 0,
+        external_author_count INTEGER DEFAULT 0
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS authorship (
+        person_id INTEGER NOT NULL,
+        paper_id INTEGER NOT NULL,
+        PRIMARY KEY (person_id, paper_id),
+        FOREIGN KEY (person_id) REFERENCES person(id),
+        FOREIGN KEY (paper_id) REFERENCES paper(id)
+    );
+    """)
+
+    conn.commit()
 
 
 # ------------------ DBLP API ------------------
@@ -160,9 +179,6 @@ def load_people(conn):
 
 
 def find_person_id_fuzzy(name, id_by_norm):
-    """
-    Pokušaj pronaći osobu fuzzy matchom
-    """
     for norm_name, pid in id_by_norm.items():
         if name_matches(name, norm_name):
             return pid
@@ -186,15 +202,30 @@ def authorship_exists(cur, person_id, paper_id):
     )
     return cur.fetchone() is not None
 
+def ensure_paper_columns(conn):
+    cur = conn.cursor()
 
-# ------------------ main logic ------------------
+    cur.execute("PRAGMA table_info(paper)")
+    cols = [row[1] for row in cur.fetchall()]
+
+    if "fer_author_count" not in cols:
+        cur.execute("ALTER TABLE paper ADD COLUMN fer_author_count INTEGER DEFAULT 0")
+
+    if "external_author_count" not in cols:
+        cur.execute("ALTER TABLE paper ADD COLUMN external_author_count INTEGER DEFAULT 0")
+
+    conn.commit()
+
+# ------------------ MAIN LOGIC ------------------
 
 def populate_from_dblp():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    cache = load_cache()
+    init_paper_tables(conn)
+    ensure_paper_columns(conn)
 
+    cache = load_cache()
     id_by_norm, name_by_id = load_people(conn)
 
     print(f"[INFO] Loaded {len(id_by_norm)} people")
@@ -214,42 +245,52 @@ def populate_from_dblp():
             title = pub["title"]
             authors = pub["authors"]
 
-            author_ids = []
+            fer_author_ids = set()
+            external_count = 0
 
             for a in authors:
                 norm = normalize_name(a)
 
                 if norm in id_by_norm:
-                    author_ids.append(id_by_norm[norm])
+                    fer_author_ids.add(id_by_norm[norm])
                 else:
                     pid = find_person_id_fuzzy(a, id_by_norm)
                     if pid:
-                        author_ids.append(pid)
+                        fer_author_ids.add(pid)
+                    else:
+                        external_count += 1
 
-            if root_id not in author_ids:
-                continue
-
-            if len(author_ids) < 1:
+            # Mora sadržavati root osobu
+            if root_id not in fer_author_ids:
                 continue
 
             paper_id = get_or_create_paper(cur, title)
 
-            for pid in author_ids:
+            # INSERT AUTHORSHIPS
+            for pid in fer_author_ids:
                 if not authorship_exists(cur, pid, paper_id):
                     cur.execute(
                         "INSERT INTO authorship (person_id, paper_id) VALUES (?, ?)",
                         (pid, paper_id)
                     )
 
+            # UPDATE COUNTS
+            cur.execute("""
+                UPDATE paper
+                SET fer_author_count = ?,
+                    external_author_count = ?
+                WHERE id = ?
+            """, (len(fer_author_ids), external_count, paper_id))
+
         conn.commit()
 
     save_cache(cache)
-
     conn.close()
+
     print("\n[DONE] DBLP import finished.")
 
 
-# ------------------ entry ------------------
+# ------------------ ENTRY ------------------
 
 if __name__ == "__main__":
     populate_from_dblp()
