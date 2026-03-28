@@ -70,7 +70,7 @@ def build_coauthor_graph_from_db(root_author, max_depth):
                     graph[co_name].add(person_name)
                 else:
                     # EXTERNAL NODE
-                    ext_node = f"EXT::{person_name}::{co_name}"
+                    ext_node = f"EXT::{co_name}"
                     graph[person_name].add(ext_node)
                     graph[ext_node].add(person_name)
 

@@ -178,16 +178,36 @@ def run_dash_app():
         components = nx.number_connected_components(G)
 
         # ---------------- COMMUNITY INSIGHTS ----------------
-        papers = [s["total"] for s in stats_map.values() if s.get("total", 0) > 0]
+        papers = [
+            stats_map[n]["total"]
+            for n in G.nodes()
+            if not n.startswith("EXT::") and n in stats_map and stats_map[n].get("total", 0) > 0
+        ]
         avg_papers = round(sum(papers) / len(papers), 2) if papers else 0
         median_papers = statistics.median(papers) if papers else 0
-        total_solo = sum(s.get("solo", 0) for s in stats_map.values())
-        total_collab = sum(s.get("collab", 0) for s in stats_map.values())
+        total_solo = sum(
+            stats_map[n].get("solo", 0)
+            for n in G.nodes()
+            if not n.startswith("EXT::") and n in stats_map
+        )
+        total_collab = sum(
+            stats_map[n].get("collab", 0)
+            for n in G.nodes()
+            if not n.startswith("EXT::") and n in stats_map
+        )
         ratio = round(total_solo / (total_solo + total_collab), 2) if (total_solo + total_collab) else 0
-        depts = [info["department"] for info in person_info.values() if info.get("department")]
+        depts = [
+            person_info[n]["department"]
+            for n in G.nodes()
+            if not n.startswith("EXT::") and n in person_info and person_info[n].get("department")
+        ]
         dominant_dept = Counter(depts).most_common(1)
         dominant_dept = dominant_dept[0][0] if dominant_dept else "N/A"
-        titles = [info["title"] for info in person_info.values() if info.get("title")]
+        titles = [
+            person_info[n]["title"]
+            for n in G.nodes()
+            if not n.startswith("EXT::") and n in person_info and person_info[n].get("title")
+        ]
         dominant_title = Counter(titles).most_common(1)
         dominant_title = dominant_title[0][0] if dominant_title else "N/A"
 
