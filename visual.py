@@ -5,7 +5,7 @@ import sqlite3
 import statistics
 from collections import Counter
 
-from build_graph import build_coauthor_graph_from_db, compute_person_stats
+from build_graph import build_coauthor_graph_from_db, compute_person_stats, compute_graph_metrics
 
 DB_PATH = "./db/erdos.db"
 
@@ -121,6 +121,7 @@ def run_dash_app():
             return go.Figure(), "Select author", "", ""
 
         graph, levels = build_coauthor_graph_from_db(author, 3)
+        metrics = compute_graph_metrics(graph, author)
 
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
@@ -166,16 +167,24 @@ def run_dash_app():
         if selected_node and selected_node in G:
             neighbors = set(G.neighbors(selected_node))
             highlight_nodes = neighbors | {selected_node} if neighbors else {selected_node}
+        
+        # ---------------- ANALYTICAL GRAPH (NO EXT) ----------------
+        internal_nodes = [n for n in G.nodes() if not n.startswith("EXT::")]
+        G_internal = G.subgraph(internal_nodes).copy()
 
         # ---------------- GRAPH PROPERTIES ----------------
-        num_nodes = len(G.nodes())
-        num_edges = len(G.edges())
-        degrees = dict(G.degree())
+        # ---------------- GRAPH PROPERTIES ----------------
+        num_nodes = len(G_internal.nodes())
+        num_edges = len(G_internal.edges())
+
+        degrees = dict(G_internal.degree())
         deg_vals = list(degrees.values())
+
         avg_degree = round(sum(deg_vals) / num_nodes, 2) if num_nodes else 0
         median_degree = statistics.median(deg_vals) if deg_vals else 0
-        density = round(nx.density(G), 4) if num_nodes > 1 else 0
-        components = nx.number_connected_components(G)
+
+        density = round(nx.density(G_internal), 4) if num_nodes > 1 else 0
+        components = nx.number_connected_components(G_internal)
 
         # ---------------- COMMUNITY INSIGHTS ----------------
         papers = [
@@ -226,8 +235,15 @@ def run_dash_app():
             html.P(f"Dominant title: {dominant_title}"),
             html.P(f"Avg papers: {avg_papers}"),
             html.P(f"Median papers: {median_papers}"),
-            html.P(f"Solo ratio: {ratio}")
+            html.P(f"Solo ratio: {ratio}"),
+            html.Hr(),
+            html.H4("Graph Metrics"),
+            html.P(f"Centrality (Erdos): {metrics['root_centrality']:.3f}"),
+            html.P(f"Graph centrality (avg): {metrics['avg_centrality']:.3f}"),
+            html.P(f"Clustering (Erdos): {metrics['root_clustering']:.3f}"),
+            html.P(f"Graph clustering (avg): {metrics['avg_clustering']:.3f}")
         ])
+
 
         fig, legend = make_figure(
             G, pos, levels, author, person_info, stats_map, color_mode, highlight_nodes
@@ -310,7 +326,7 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
         level = levels.get(node, "?")
         info = person_info.get(node, {})
         stats = stats_map.get(node, {})
-        degree = G.degree(node)
+        degree = sum(1 for n in G.neighbors(node) if not n.startswith("EXT::"))
 
         score = stats.get("collab_score", 0)
         collab_type = "Internal" if score > 0 else "External" if score < 0 else "Balanced"

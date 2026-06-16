@@ -132,6 +132,63 @@ def compute_person_stats(conn, person_id):
         "collab": collab
     }
 
+def degree_centrality(graph):
+    # samo pravi čvorovi
+    valid_nodes = [n for n in graph if not n.startswith("EXT::")]
+    N = len(valid_nodes)
+
+    centrality = {}
+
+    for node in valid_nodes:
+        deg = sum(1 for n in graph[node] if not n.startswith("EXT::"))
+        centrality[node] = deg / (N - 1) if N > 1 else 0
+
+    return centrality
+
+
+def clustering_coefficient(graph, node):
+    neighbors = [n for n in graph[node] if not n.startswith("EXT::")]
+    k = len(neighbors)
+
+    if k < 2:
+        return 0
+
+    links = 0
+
+    for i in range(k):
+        for j in range(i + 1, k):
+            if neighbors[j] in graph[neighbors[i]]:
+                links += 1
+
+    return (2 * links) / (k * (k - 1))
+
+
+def average_clustering(graph):
+    valid_nodes = [n for n in graph if not n.startswith("EXT::")]
+    return sum(clustering_coefficient(graph, n) for n in valid_nodes) / len(valid_nodes)
+
+
+def average_centrality(centrality_dict):
+    return sum(centrality_dict.values()) / len(centrality_dict)
+
+def compute_graph_metrics(graph, root_name):
+    centrality = degree_centrality(graph)
+
+    valid_nodes = [n for n in graph if not n.startswith("EXT::")]
+
+    root_centrality = centrality.get(root_name, 0)
+    avg_centrality = sum(centrality[n] for n in valid_nodes) / len(valid_nodes)
+
+    root_clustering = clustering_coefficient(graph, root_name)
+    avg_clustering = average_clustering(graph)
+
+    return {
+        "root_centrality": root_centrality,
+        "avg_centrality": avg_centrality,
+        "root_clustering": root_clustering,
+        "avg_clustering": avg_clustering
+    }
+
 def main():
     visual.run_dash_app()
 
