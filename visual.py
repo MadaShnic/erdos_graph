@@ -9,6 +9,41 @@ from build_graph import build_coauthor_graph_from_db, compute_person_stats, comp
 
 DB_PATH = "./db/erdos.db"
 
+def compute_collab_from_papers(conn, person_id):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT p.fer_author_count, p.external_author_count
+        FROM paper p
+        JOIN authorship a ON p.id = a.paper_id
+        WHERE a.person_id = ?
+    """, (person_id,))
+
+    rows = cur.fetchall()
+
+    internal = 0
+    external = 0
+    balanced = 0
+
+    for fer, ext in rows:
+        score = (fer or 0) - (ext or 0)
+
+        if score > 0:
+            internal += 1
+        elif score < 0:
+            external += 1
+        else:
+            balanced += 1
+
+    total = internal + external + balanced
+
+    return {
+        "internal_papers": internal,
+        "external_papers": external,
+        "balanced_papers": balanced,
+        "collab_score": internal - external,
+        "collab_ratio": internal / total if total else 0
+    }
 
 def load_all_names():
     conn = sqlite3.connect(DB_PATH)
@@ -139,7 +174,10 @@ def run_dash_app():
             }
 
         for name, info in person_info.items():
-            stats_map[name] = compute_person_stats(conn, info["id"])
+            base_stats = compute_person_stats(conn, info["id"])
+            collab_stats = compute_collab_from_papers(conn, info["id"])
+
+            stats_map[name] = {**base_stats, **collab_stats}
 
         conn.close()
 
@@ -148,18 +186,6 @@ def run_dash_app():
         for a, coauthors in graph.items():
             for c in coauthors:
                 G.add_edge(a, c)
-
-        # ---------------- COLLAB SCORE ----------------
-        for node in G.nodes():
-            if node.startswith("EXT::"):
-                continue
-
-            score = 0
-            for n in G.neighbors(node):
-                score += -1 if n.startswith("EXT::") else 1
-
-            stats_map.setdefault(node, {})
-            stats_map[node]["collab_score"] = score
 
         pos = nx.spring_layout(G, k=1.2, iterations=80, seed=42)
 
@@ -328,8 +354,15 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
         stats = stats_map.get(node, {})
         degree = sum(1 for n in G.neighbors(node) if not n.startswith("EXT::"))
 
-        score = stats.get("collab_score", 0)
-        collab_type = "Internal" if score > 0 else "External" if score < 0 else "Balanced"
+        internal = stats.get("internal_papers", 0)
+        external = stats.get("external_papers", 0)
+
+        if internal > external:
+            collab_type = "Internal"
+        elif external > internal:
+            collab_type = "External"
+        elif external == internal:
+            collab_type = "Balanced"
 
         hover_text.append(
             f"<b>{node}</b><br>"
@@ -351,7 +384,14 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
 
         # ---------------- COLOR ----------------
         if color_mode == "collab":
-            node_color.append("#7bd389" if score > 0 else "#f4a261" if score < 0 else "#b084cc")
+            stats = stats_map.get(node, {})
+            score = stats.get("collab_score", 0)
+
+            node_color.append(
+                "#7bd389" if score > 0
+                else "#f4a261" if score < 0
+                else "#b084cc"
+            )
 
         elif color_mode == "gender":
             node_color.append("blue" if info.get("gender") == "M" else "pink")

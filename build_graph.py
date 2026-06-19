@@ -1,7 +1,6 @@
 import sqlite3
 import unicodedata
 from collections import deque, defaultdict
-import visual
 
 DB_PATH = "./db/erdos.db"
 
@@ -188,10 +187,3 @@ def compute_graph_metrics(graph, root_name):
         "root_clustering": root_clustering,
         "avg_clustering": avg_clustering
     }
-
-def main():
-    visual.run_dash_app()
-
-
-if __name__ == "__main__":
-    main()
