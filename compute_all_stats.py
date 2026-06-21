@@ -13,7 +13,6 @@ from build_graph import (
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DB = os.path.join(BASE_DIR, "db", "statistics.db")
-
 DB_PATH = "./db/erdos.db"
 
 
@@ -39,7 +38,7 @@ def build_nx_graph(graph_dict):
             G.add_edge(a, c)
     return G
 
-# NOVI KOD
+
 def compute_collab_from_papers(conn, person_id):
     cur = conn.cursor()
 
@@ -70,12 +69,10 @@ def compute_collab_from_papers(conn, person_id):
         return "internal"
     elif external > internal:
         return "external"
-    elif internal == external:
+    else:
         return "balanced"
 
-# =========================
-# 🔥 GRAPH → SCORE
-# =========================
+
 def compute_graph_collab(G_int, person_types):
     total = 0
 
@@ -86,13 +83,12 @@ def compute_graph_collab(G_int, person_types):
             total += 1
         elif t == "external":
             total -= 1
-        # balanced = 0
 
     if total > 0:
         return "internal"
     elif total < 0:
         return "external"
-    elif total == 0:
+    else:
         return "balanced"
 
 
@@ -104,35 +100,41 @@ def main():
 
     cur_out.execute("DROP TABLE IF EXISTS author_stats")
 
-    # 🔥 NOVA TABLICA
+    # ✅ FINAL TABLICA
     cur_out.execute("""
         CREATE TABLE author_stats (
             author TEXT PRIMARY KEY,
+            department TEXT,
+            gender TEXT,
+            title TEXT,
 
+            -- BASIC STATS
             total_papers INT,
             solo_papers INT,
             collab_papers INT,
 
+            -- NODE METRICS
             degree INT,
             centrality REAL,
             clustering REAL,
 
+            -- GRAPH METRICS
             graph_nodes INT,
             graph_edges INT,
             avg_degree REAL,
             density REAL,
-            components INT,
-
-            avg_centrality REAL,
             avg_clustering REAL,
 
+            -- COMMUNITY
             gender_ratio REAL,
             dominant_department TEXT,
             dominant_title TEXT,
 
+            -- PRODUCTIVITY
             avg_papers REAL,
             solo_ratio REAL,
 
+            -- COLLAB TYPE
             person_collab_type TEXT,
             graph_collab_type TEXT
         )
@@ -141,7 +143,6 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # person info
     cur.execute("SELECT id, full_name, gender, department, title FROM person")
     person_info = {
         name: {
@@ -153,15 +154,12 @@ def main():
         for pid, name, gender, dept, title in cur.fetchall()
     }
 
-    # stats cache
     person_stats_cache = {
         name: compute_person_stats(conn, info["id"])
         for name, info in person_info.items()
     }
 
-    # 🔥 PERSON TYPE CACHE
     person_collab_cache = {
-        # fix ovdje
         name: compute_collab_from_papers(conn, info["id"])
         for name, info in person_info.items()
     }
@@ -178,18 +176,23 @@ def main():
                 continue
 
             stats = person_stats_cache[author]
-            centrality_map = degree_centrality(graph_dict)
+            info = person_info[author]
 
-            degree = G_int.degree(author) if author in G_int else 0
+            author_dept = info["department"]
+            author_gender = info["gender"]
+            author_title = info["title"]
+
+            # NODE METRICS
+            centrality_map = degree_centrality(graph_dict)
             centrality = centrality_map.get(author, 0)
             clustering = clustering_coefficient(graph_dict, author)
+            degree = G_int.degree(author) if author in G_int else 0
 
-            # GRAPH
+            # GRAPH METRICS
             num_nodes = len(G_int.nodes())
             num_edges = len(G_int.edges())
             avg_degree = sum(dict(G_int.degree()).values()) / num_nodes if num_nodes else 0
             density = nx.density(G_int) if num_nodes > 1 else 0
-            components = nx.number_connected_components(G_int)
 
             metrics = compute_graph_metrics(graph_dict, author)
 
@@ -198,14 +201,14 @@ def main():
 
             for n in G_int.nodes():
                 if n in person_stats_cache:
-                    info = person_info[n]
+                    n_info = person_info[n]
 
-                    if info["gender"]:
-                        genders.append(info["gender"])
-                    if info["department"]:
-                        depts.append(info["department"])
-                    if info["title"]:
-                        titles.append(info["title"])
+                    if n_info["gender"]:
+                        genders.append(n_info["gender"])
+                    if n_info["department"]:
+                        depts.append(n_info["department"])
+                    if n_info["title"]:
+                        titles.append(n_info["title"])
 
                     papers.append(person_stats_cache[n]["total"])
 
@@ -224,12 +227,15 @@ def main():
 
             solo_ratio = total_solo / (total_solo + total_collab) if (total_solo + total_collab) else 0
 
-            # 🔥 FINAL CLASSIFICATION
             person_collab_type = person_collab_cache.get(author, None)
             graph_collab_type = compute_graph_collab(G_int, person_collab_cache)
 
             values = (
                 author,
+                author_dept,
+                author_gender,
+                author_title,
+
                 stats["total"],
                 stats["solo"],
                 stats["collab"],
@@ -242,9 +248,6 @@ def main():
                 num_edges,
                 avg_degree,
                 density,
-                components,
-
-                metrics["avg_centrality"],
                 metrics["avg_clustering"],
 
                 gender_ratio,
@@ -258,33 +261,40 @@ def main():
                 graph_collab_type
             )
 
-            assert len(values) == 21
+            assert len(values) == 22
 
             cur_out.execute("""
                 INSERT OR REPLACE INTO author_stats (
                     author,
+                    department,
+                    gender,
+                    title,
+
                     total_papers,
                     solo_papers,
                     collab_papers,
+
                     degree,
                     centrality,
                     clustering,
+
                     graph_nodes,
                     graph_edges,
                     avg_degree,
                     density,
-                    components,
-                    avg_centrality,
                     avg_clustering,
+
                     gender_ratio,
                     dominant_department,
                     dominant_title,
+
                     avg_papers,
                     solo_ratio,
+
                     person_collab_type,
                     graph_collab_type
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, values)
 
             print("OK:", author)
