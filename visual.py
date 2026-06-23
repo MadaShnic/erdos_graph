@@ -210,7 +210,6 @@ def run_dash_app():
         median_degree = statistics.median(deg_vals) if deg_vals else 0
 
         density = round(nx.density(G_internal), 4) if num_nodes > 1 else 0
-        components = nx.number_connected_components(G_internal)
 
         # ---------------- COMMUNITY INSIGHTS ----------------
         papers = [
@@ -254,7 +253,6 @@ def run_dash_app():
             html.P(f"Avg degree: {avg_degree}"),
             html.P(f"Median degree: {median_degree}"),
             html.P(f"Density: {density}"),
-            html.P(f"Components: {components}"),
             html.Hr(),
             html.H4("Community Insights"),
             html.P(f"Dominant dept: {dominant_dept}"),
