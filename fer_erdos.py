@@ -59,10 +59,8 @@ def compute_diameter(graph):
 
 
 def main():
-    # veliki depth da "pokupi sve"
     graph, levels = build_coauthor_graph_from_db(ROOT, max_depth=100)
 
-    # RADIJUS (maks udaljenost od Groša)
     dist, parent = bfs_distances(graph, ROOT)
 
     radius = max(dist.values())

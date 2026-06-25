@@ -124,7 +124,7 @@ def main():
         "Avg Clustering"
     )
 
-    # 🔥 5. nodes vs root clustering
+    # 5. nodes vs root clustering
     scatter(
         axs[1, 1],
         [d["nodes"] for d in small],
@@ -138,7 +138,7 @@ def main():
         "Clustering"
     )
 
-    # 🔥 6. root vs graph clustering
+    # 6. root vs graph clustering
     scatter(
         axs[1, 2],
         [d["clustering"] for d in small],

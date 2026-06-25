@@ -178,7 +178,7 @@ def load_people(conn):
     return id_by_norm, name_by_id
 
 
-def find_person_id_fuzzy(name, id_by_norm):
+def find_person_id(name, id_by_norm):
     for norm_name, pid in id_by_norm.items():
         if name_matches(name, norm_name):
             return pid
@@ -228,7 +228,7 @@ def populate_from_dblp():
     cache = load_cache()
     id_by_norm, name_by_id = load_people(conn)
 
-    print(f"[INFO] Loaded {len(id_by_norm)} people")
+    print(f"Loaded {len(id_by_norm)} people")
 
     for root_id, root_name in name_by_id.items():
         print(f"\n[DBLP] {root_name}")
@@ -254,13 +254,13 @@ def populate_from_dblp():
                 if norm in id_by_norm:
                     fer_author_ids.add(id_by_norm[norm])
                 else:
-                    pid = find_person_id_fuzzy(a, id_by_norm)
+                    pid = find_person_id(a, id_by_norm)
                     if pid:
                         fer_author_ids.add(pid)
                     else:
                         external_count += 1
 
-            # Mora sadržavati root osobu
+            # must have root
             if root_id not in fer_author_ids:
                 continue
 
@@ -287,7 +287,7 @@ def populate_from_dblp():
     save_cache(cache)
     conn.close()
 
-    print("\n[DONE] DBLP import finished.")
+    print("\nDBLP import finished.")
 
 
 # ------------------ ENTRY ------------------

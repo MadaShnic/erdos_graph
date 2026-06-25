@@ -12,11 +12,9 @@ def normalize_title(title: str) -> str:
 
     t = title.strip().lower()
 
-    # 🔥 1. SVE mag.ing.* -> mag. ing.
     if "mag" in t:
         return "mag. ing."
 
-    # 🧠 2. dr.sc. logika (bez razmaka, duljina = 6)
     t_no_space = re.sub(r"\s+", "", t)
 
     if t_no_space == "dr.sc.":
@@ -31,18 +29,15 @@ def clean_and_normalize_authors():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # BEFORE COUNT
     cur.execute("SELECT COUNT(*) FROM author_stats")
     before = cur.fetchone()[0]
 
-    # 🧹 DELETE useless authors
     cur.execute("""
         DELETE FROM author_stats
         WHERE graph_nodes = 0
     """)
     conn.commit()
 
-    # 🔧 NORMALIZE TITLES
     cur.execute("SELECT rowid, title FROM author_stats")
     rows = cur.fetchall()
 
@@ -62,7 +57,6 @@ def clean_and_normalize_authors():
 
     conn.commit()
 
-    # AFTER COUNT
     cur.execute("SELECT COUNT(*) FROM author_stats")
     after = cur.fetchone()[0]
 

@@ -12,9 +12,7 @@ FIRSTNAMES_CSV = "db\\firstnames.csv"
 BASE_ISVU = "https://www.isvu.hr"
 BASE_FER = "https://www.fer.unizg.hr/"
 
-# ------------------------
-# Normalization
-# ------------------------
+# normalization for names
 
 def normalize(text: str) -> str:
     text = text.lower()
@@ -33,9 +31,7 @@ def slugify_name(full_name):
     else:
         return f"{'_'.join(parts[:-1])}.{parts[-1]}", f"{parts[0]}.{'_'.join(parts[1:])}"
 
-# ------------------------
-# Gender DB
-# ------------------------
+# load csv gender names 
 
 def load_name_database(path):
     temp = {}
@@ -67,9 +63,7 @@ def load_name_database(path):
 def find_gender(first_name, db):
     return db.get(first_name.lower(), "unknown")
 
-# ------------------------
-# DB (ONLY PERSON TABLE)
-# ------------------------
+# person table
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -98,9 +92,7 @@ def insert_person(cur, data):
         VALUES (?, ?, ?, ?, ?, ?)
     """, data)
 
-# ------------------------
-# Name parsing
-# ------------------------
+# name parse
 
 def parse_name_and_title(raw_name):
 
@@ -137,9 +129,7 @@ def parse_name_and_title(raw_name):
 
     return clean_name, title
 
-# ------------------------
-# FER PROFILE PARSER
-# ------------------------
+# department parse
 
 def parse_fer_profile(html):
 
@@ -155,9 +145,7 @@ def parse_fer_profile(html):
 
     return None
 
-# ------------------------
-# FER PEOPLE
-# ------------------------
+# main parsing
 
 def parse_fer_people(conn, gender_db):
 
@@ -233,9 +221,7 @@ def parse_fer_people(conn, gender_db):
         conn.commit()
         time.sleep(1.5)
 
-# ------------------------
-# Fix genders
-# ------------------------
+# fix genders
 
 def fix_unknown_genders(conn):
     cur = conn.cursor()
@@ -247,8 +233,8 @@ def fix_unknown_genders(conn):
 
     rows = cur.fetchall()
 
-    print("\n--- Manual gender input ---")
-    print("Enter M / F (or press Enter to skip)\n")
+    print("\n--- gender input ---")
+    print("Enter M / F (enter to skip)\n")
 
     for person_id, full_name in rows:
         while True:
@@ -266,10 +252,6 @@ def fix_unknown_genders(conn):
                 break
             else:
                 print("Invalid input. Use M, F or Enter to skip.")
-
-# ------------------------
-# MAIN
-# ------------------------
 
 def main():
 

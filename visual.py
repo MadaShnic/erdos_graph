@@ -58,7 +58,6 @@ def run_dash_app():
     app = Dash(__name__)
     all_names = load_all_names()
 
-    # ---------------- LAYOUT ----------------
     app.layout = html.Div([
 
         html.Div([
@@ -116,7 +115,6 @@ def run_dash_app():
         })
     ])
 
-    # ---------------- CLICK STORE ----------------
     @app.callback(
         Output("selected-node", "data"),
         Input("graph", "clickData"),
@@ -140,7 +138,6 @@ def run_dash_app():
 
         return node
 
-    # ---------------- MAIN CALLBACK ----------------
     @app.callback(
         Output("graph", "figure"),
         Output("title", "children"),
@@ -194,12 +191,9 @@ def run_dash_app():
             neighbors = set(G.neighbors(selected_node))
             highlight_nodes = neighbors | {selected_node} if neighbors else {selected_node}
         
-        # ---------------- ANALYTICAL GRAPH (NO EXT) ----------------
         internal_nodes = [n for n in G.nodes() if not n.startswith("EXT::")]
         G_internal = G.subgraph(internal_nodes).copy()
 
-        # ---------------- GRAPH PROPERTIES ----------------
-        # ---------------- GRAPH PROPERTIES ----------------
         num_nodes = len(G_internal.nodes())
         num_edges = len(G_internal.edges())
 
@@ -278,7 +272,6 @@ def run_dash_app():
     app.run(debug=True)
 
 
-# ---------------- FIGURE ----------------
 def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode, highlight_nodes=None):
 
     is_highlight_mode = highlight_nodes is not None and len(highlight_nodes) > 0
@@ -286,7 +279,6 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
     edge_x_normal, edge_y_normal = [], []
     edge_x_highlight, edge_y_highlight = [], []
 
-    # ---------------- EDGES ----------------
     for u, v in G.edges():
         x0, y0 = pos[u]
         x1, y1 = pos[v]
@@ -316,7 +308,6 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
         opacity=0.9
     )
 
-    # ---------------- NODES ----------------
     node_x, node_y = [], []
     node_color, node_opacity = [], []
     hover_text, labels = [], []
@@ -335,7 +326,6 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
 
         is_highlighted = (not is_highlight_mode) or (node in highlight_nodes)
 
-        # ---------------- EXTERNAL ----------------
         if node.startswith("EXT::"):
             real_name = node.split("::")[-1]
 
@@ -380,7 +370,6 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
         else:
             labels.append(f"{node}\n({level})")
 
-        # ---------------- COLOR ----------------
         if color_mode == "collab":
             stats = stats_map.get(node, {})
             score = stats.get("collab_score", 0)
@@ -449,7 +438,6 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
         margin=dict(l=20, r=20, t=40, b=20)
     )
 
-    # ---------------- LEGEND LOGIC ----------------
     legend = []
 
     def legend_item(color, text):

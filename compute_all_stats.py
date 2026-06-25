@@ -100,7 +100,6 @@ def main():
 
     cur_out.execute("DROP TABLE IF EXISTS author_stats")
 
-    # ✅ FINAL TABLICA
     cur_out.execute("""
         CREATE TABLE author_stats (
             author TEXT PRIMARY KEY,

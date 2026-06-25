@@ -41,7 +41,7 @@ def build_coauthor_graph_from_db(root_author, max_depth):
 
     root = get_person_id(conn, root_author)
     if root is None:
-        raise ValueError(f"Autor '{root_author}' nije pronađen u bazi")
+        raise ValueError(f"Autor '{root_author}' nije u bazi")
 
     root_id, root_name = root
 
@@ -54,31 +54,30 @@ def build_coauthor_graph_from_db(root_author, max_depth):
     while queue:
         person_id, person_name, depth = queue.popleft()
 
-        # osiguraj da čvor postoji (čak i bez bridova)
+        # ensure that node exists
         graph[person_name]
 
         coauthors = get_coauthors(conn, person_id)
 
-        # RUBNI ČVOR (depth == max_depth)
+        # edge node (depth == max_depth)
         if depth == max_depth:
             for co_id, co_name in coauthors:
 
                 if co_name in graph:
-                    # već postoji u grafu
+                    # already in graph
                     graph[person_name].add(co_name)
                     graph[co_name].add(person_name)
                 else:
-                    # EXTERNAL NODE
+                    # external node
                     ext_node = f"EXT::{co_name}"
                     graph[person_name].add(ext_node)
                     graph[ext_node].add(person_name)
 
-                    # da ima level (npr. depth+1 ili posebno)
                     levels[ext_node] = depth + 1
 
             continue
 
-        # BFS ŠIRENJE
+        # BFS
         for co_id, co_name in coauthors:
             graph[person_name].add(co_name)
             graph[co_name].add(person_name)
@@ -90,6 +89,7 @@ def build_coauthor_graph_from_db(root_author, max_depth):
 
     conn.close()
     return graph, levels
+
 
 def compute_person_stats(conn, person_id):
     cur = conn.cursor()
