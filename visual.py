@@ -89,6 +89,13 @@ def run_dash_app():
             html.Div(id="legend-box", style={"marginTop": "20px"}),
 
             html.Hr(),
+            dcc.Checklist(
+                id="toggle-labels",
+                options=[{"label": "Show names", "value": "show"}],
+                value=["show"],  # default: prikazano
+                style={"marginTop": "10px"}
+            ),
+            html.Hr(),
 
             html.H3("Statistics"),
             html.Div(id="stats-box")
@@ -146,9 +153,12 @@ def run_dash_app():
         Input("author-dropdown", "value"),
         Input("color-mode", "value"),
         Input("selected-node", "data"),
+        Input("toggle-labels", "value"),
         prevent_initial_call=True
     )
-    def update_graph(author, color_mode, selected_node):
+    def update_graph(author, color_mode, selected_node, toggle_labels):
+        show_labels = "show" in toggle_labels if toggle_labels else False
+        
         if not author:
             return go.Figure(), "Select author", "", ""
 
@@ -264,15 +274,15 @@ def run_dash_app():
 
 
         fig, legend = make_figure(
-            G, pos, levels, author, person_info, stats_map, color_mode, highlight_nodes
+            G, pos, levels, author, person_info, stats_map, color_mode, show_labels, highlight_nodes
         )
 
-        return fig, f"Erdős Graph – {author}", legend, stats_box
+        return fig, f"Erdős Graph - {author}", legend, stats_box
 
     app.run(debug=True)
 
 
-def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode, highlight_nodes=None):
+def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode, show_labels, highlight_nodes=None):
 
     is_highlight_mode = highlight_nodes is not None and len(highlight_nodes) > 0
 
@@ -334,7 +344,7 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
             node_color.append("#C0C0C0")
             node_opacity.append(1.0 if is_highlighted else 0.1)
 
-            labels.append(real_name if is_highlighted or not is_highlight_mode else "")
+            labels.append(real_name if show_labels and (is_highlighted or not is_highlight_mode) else "")
             continue
 
         level = levels.get(node, "?")
@@ -365,10 +375,13 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
             f"Collab type: {collab_type}<br>"
         )
 
-        if is_highlight_mode and highlight_nodes:
-            labels.append(f"{node}\n({level})" if node in highlight_nodes else "")
+        if show_labels:
+            if is_highlight_mode and highlight_nodes:
+                labels.append(f"{node}\n({level})" if node in highlight_nodes else "")
+            else:
+                labels.append(f"{node}\n({level})")
         else:
-            labels.append(f"{node}\n({level})")
+            labels.append("")
 
         if color_mode == "collab":
             stats = stats_map.get(node, {})
@@ -415,8 +428,8 @@ def make_figure(G, pos, levels, root_author, person_info, stats_map, color_mode,
     node_trace = go.Scatter(
         x=node_x,
         y=node_y,
-        mode="markers+text",
-        text=labels,
+        mode="markers+text" if show_labels else "markers",
+        text=labels if show_labels else None,
         textposition="top center",
         hoverinfo="text",
         hovertext=hover_text,
